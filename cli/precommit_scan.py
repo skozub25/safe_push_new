@@ -1,19 +1,22 @@
 import subprocess
 import sys
 from typing import List
+
 from scanner.core import scan_line, Finding
+
 
 def get_staged_diff() -> str:
     cmd = ["git", "diff", "--cached", "--unified=0"]
     return subprocess.check_output(cmd, text=True)
 
-def main():
+
+def main() -> None:
     print("Scanning for secrets in staged changes...")
     diff = get_staged_diff()
     findings: List[Finding] = []
 
-    current_file = None
-    line_no = None
+    current_file: str | None = None
+    line_no: int | None = None
 
     for line in diff.splitlines():
         if line.startswith("+++ b/"):
@@ -32,16 +35,25 @@ def main():
                 findings.extend(scan_line(current_file, line_no, code_line))
 
     if findings:
-        print("Potential secrets detected:\n")
+        print("\nPotential secrets detected:\n")
+        print("Severity legend: HIGH = likely real secrets, "
+              "MEDIUM = suspicious, LOW = needs review.\n")
+
         for f in findings:
-            print(f"{f.file}:{f.line_no}: {f.reason}")
+            print(f"{f.file}:{f.line_no}: [{f.severity}] {f.reason}")
             print(f"    {f.snippet}")
-        print("\nCommit aborted. Remove/rotate these values or mark safe, then try again.")
+
+        print(
+            "\nCommit aborted. Remove/rotate these values or mark safe "
+            "via config/allowlist, then try again."
+        )
         # DO NOT create this commit
         sys.exit(1)
 
     # no findings: allow commit
+    print("No secrets found in staged changes.")
     sys.exit(0)
+
 
 if __name__ == "__main__":
     main()

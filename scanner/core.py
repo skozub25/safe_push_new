@@ -1,10 +1,13 @@
 import re
 from dataclasses import dataclass
-from .patterns import PATTERNS
+from typing import List, Optional
+
+from .patterns import PATTERN_RULES, SEV_LOW, SEV_MEDIUM, SEV_HIGH
 from .entropy import shannon_entropy
 from .config import should_ignore_file, should_ignore_line, is_allowlisted
 
 SENSITIVE_HINTS = ["key", "secret", "token", "password", "jwt"]
+
 
 @dataclass
 class Finding:
@@ -12,6 +15,7 @@ class Finding:
     line_no: int
     snippet: str
     reason: str
+    severity: str  # "LOW" | "MEDIUM" | "HIGH"
 
 
 def _is_sensitive_context(line: str) -> bool:
@@ -19,26 +23,54 @@ def _is_sensitive_context(line: str) -> bool:
     return any(h in lower for h in SENSITIVE_HINTS)
 
 
-def _looks_like_secret(token: str) -> bool:
-    # Current heuristic: long + high-entropy-ish
-    return len(token) >= 24 and shannon_entropy(token) >= 4.0
-
-
-def scan_line(file_path: str, line_no: int, line: str):
+def _classify_entropy_token(token: str, has_sensitive_context: bool) -> Optional[str]:
     """
-    Scan a single added line and return any findings.
+    Classify a quoted token based on length, entropy, and whether the surrounding
+    line looks like it's dealing with secrets.
 
-    Stage 1 behavior:
+    Returns:
+        "HIGH", "MEDIUM", "LOW", or None if the token should not be flagged.
+    """
+    length = len(token)
+    entropy = shannon_entropy(token)
+
+    # HIGH: strong signal that this is a real secret.
+    # - Appears in a sensitive context
+    # - Long and high entropy (very random-looking)
+    if has_sensitive_context and length >= 24 and entropy >= 4.0:
+        return SEV_HIGH
+
+    # MEDIUM: suspicious but less conclusive.
+    # (1) Context suggests a secret, but token is shorter / lower entropy,
+    if has_sensitive_context and length >= 8:
+        return SEV_MEDIUM
+
+    # (2) No explicit context, but token is long and very high entropy.
+    if not has_sensitive_context and length >= 24 and entropy >= 4.0:
+        return SEV_MEDIUM
+
+    # LOW: smells like a secret, but signal is weaker.
+    if not has_sensitive_context and length >= 16 and entropy >= 3.5:
+        return SEV_LOW
+
+    return None
+
+
+def scan_line(file_path: str, line_no: int, line: str) -> List[Finding]:
+    """
+    Scan a single line and return any findings.
+
+    Behavior:
       - Respect config-based ignores:
           * ignore_paths
           * ignore_lines_with
           * ignore_patterns
           * allowlist_hashes
-      - Run provider-specific patterns (PATTERNS).
-      - Run entropy-based heuristic for high-entropy tokens
-        in sensitive contexts.
+      - Run provider-specific patterns (PATTERN_RULES) with per-rule severity.
+      - Run entropy-based heuristic for quoted tokens, assigning severity
+        based on context + entropy + length.
     """
-    findings = []
+    findings: List[Finding] = []
 
     # 0) Global ignores: if the file or line is ignored, skip everything.
     if should_ignore_file(file_path):
@@ -48,37 +80,52 @@ def scan_line(file_path: str, line_no: int, line: str):
         return findings
 
     stripped = line.strip()
+    has_context = _is_sensitive_context(line)
 
     # 1) Known provider patterns
-    for pat in PATTERNS:
-        for match in pat.finditer(line):
+    for rule in PATTERN_RULES:
+        for match in rule.regex.finditer(line):
             token = match.group(0)
 
             # If this exact token is explicitly allowlisted, skip it.
             if is_allowlisted(token):
                 continue
 
-            findings.append(Finding(
-                file=file_path,
-                line_no=line_no,
-                snippet=stripped,
-                reason="Matches known secret pattern",
-            ))
-
-    # 2) High-entropy candidates inside quotes (unknown secrets)
-    #    We only consider tokens that look like structured secrets
-    #    and appear in a "sensitive" context.
-    if _is_sensitive_context(line):
-        for token in re.findall(r'["\']([A-Za-z0-9/+_=.-]{16,})["\']', line):
-            if is_allowlisted(token):
-                continue
-
-            if _looks_like_secret(token):
-                findings.append(Finding(
+            findings.append(
+                Finding(
                     file=file_path,
                     line_no=line_no,
                     snippet=stripped,
-                    reason="High-entropy value in sensitive context",
-                ))
+                    reason=f"Matches {rule.name} pattern",
+                    severity=rule.severity,
+                )
+            )
+
+    # 2) Entropy-based candidates inside quotes (unknown secrets)
+    for token in re.findall(r'["\']([A-Za-z0-9/+_=.\-]{8,})["\']', line):
+        if is_allowlisted(token):
+            continue
+
+        severity = _classify_entropy_token(token, has_context)
+        if not severity:
+            continue
+
+        # Keep old reason text for HIGH-sensitive-context case so existing tests pass
+        if has_context and severity == SEV_HIGH:
+            reason = "High-entropy value in sensitive context"
+        elif has_context:
+            reason = "Suspicious value in sensitive context"
+        else:
+            reason = "Suspicious high-entropy value"
+
+        findings.append(
+            Finding(
+                file=file_path,
+                line_no=line_no,
+                snippet=stripped,
+                reason=reason,
+                severity=severity,
+            )
+        )
 
     return findings
