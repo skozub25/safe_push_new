@@ -18,3 +18,7 @@ allowlist_hashes:
   # - "sha256:<hash-of-known-safe-secret>"
   # Used when you never want a specific value flagged, even if moved.
   # Leave empty or omit if not needed.
+
+# New: configure minimum severity that BLOCKS commits/CI.
+# Options: "LOW", "MEDIUM", "HIGH"
+block_severity: "HIGH"

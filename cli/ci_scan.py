@@ -6,6 +6,9 @@ import sys
 from typing import List, Optional
 
 from scanner.core import scan_line, Finding
+from scanner.config import get_block_severity
+
+SEVERITY_RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
 
 
 def _run(cmd: List[str]) -> str:
@@ -45,6 +48,16 @@ def _scan_paths(paths: List[str]) -> List[Finding]:
     return findings
 
 
+def _should_block(findings: List[Finding]) -> bool:
+    if not findings:
+        return False
+
+    block_sev = get_block_severity()
+    threshold = SEVERITY_RANK.get(block_sev, SEVERITY_RANK["HIGH"])
+    max_found = max(SEVERITY_RANK.get(f.severity, 0) for f in findings)
+    return max_found >= threshold
+
+
 def main() -> int:
     changed = _changed_files_in_pr()
     paths = changed if changed else _tracked_files()
@@ -58,7 +71,22 @@ def main() -> int:
         for f in findings:
             print(f"{f.file}:{f.line_no}: [{f.severity}] {f.reason}")
             print(f"    {f.snippet}")
-        return 1
+
+        if _should_block(findings):
+            block_sev = get_block_severity()
+            print(
+                f"\nCI failed: findings at or above blocking severity "
+                f"({block_sev}) were detected."
+            )
+            return 1
+        else:
+            block_sev = get_block_severity()
+            print(
+                f"\nCI warnings only: no findings at or above blocking severity "
+                f"({block_sev}). Build passing, but please review the "
+                "findings above."
+            )
+            return 0
 
     print("No secrets found.")
     return 0
