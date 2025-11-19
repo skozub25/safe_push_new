@@ -12,6 +12,7 @@ Design goals:
     - should_ignore_file(path)
     - should_ignore_line(line)
     - is_allowlisted(token)
+    - get_block_severity()
 """
 
 import os
@@ -27,6 +28,9 @@ except ImportError:
     yaml = None  # YAML is optional; we have a fallback parser for simple configs.
 
 
+_VALID_SEVERITIES = {"LOW", "MEDIUM", "HIGH"}
+
+
 # ======================================================================
 # Internal config representation
 # ======================================================================
@@ -40,6 +44,8 @@ class SafePushConfig:
         ignore_patterns: list of regex strings (compiled at load)
         ignore_lines_with: list of substrings; if any appear in a line, ignore it
         allowlist_hashes: list of literal tokens or "sha256:<hex>" entries
+        block_severity: minimum severity that should BLOCK commits/CI
+                        ("LOW", "MEDIUM", "HIGH"). Defaults to "HIGH".
     """
 
     def __init__(
@@ -48,6 +54,7 @@ class SafePushConfig:
         ignore_patterns: Optional[List[str]] = None,
         ignore_lines_with: Optional[List[str]] = None,
         allowlist_hashes: Optional[List[str]] = None,
+        block_severity: Optional[str] = None,
     ) -> None:
         self.ignore_paths: List[str] = ignore_paths or []
 
@@ -59,6 +66,13 @@ class SafePushConfig:
 
         self.ignore_lines_with: List[str] = ignore_lines_with or []
         self.allowlist_hashes: List[str] = allowlist_hashes or []
+
+        # Normalize and validate block_severity; default to "HIGH"
+        if block_severity:
+            bs = str(block_severity).strip().upper()
+            self.block_severity: str = bs if bs in _VALID_SEVERITIES else "HIGH"
+        else:
+            self.block_severity = "HIGH"
 
 
 # ======================================================================
@@ -189,6 +203,7 @@ def _load_config() -> SafePushConfig:
         ignore_patterns=raw.get("ignore_patterns", []),
         ignore_lines_with=raw.get("ignore_lines_with", []),
         allowlist_hashes=raw.get("allowlist_hashes", []),
+        block_severity=raw.get("block_severity"),
     )
 
 
@@ -291,3 +306,18 @@ def is_allowlisted(token: str) -> bool:
                 return True
 
     return False
+
+
+def get_block_severity() -> str:
+    """
+    Return the configured minimum severity that should block a commit/CI run.
+
+    Values: "LOW", "MEDIUM", "HIGH".
+    Defaults to "HIGH" if not set or invalid.
+    """
+    bs = getattr(_CONFIG, "block_severity", "HIGH")
+    if isinstance(bs, str):
+        up = bs.strip().upper()
+        if up in _VALID_SEVERITIES:
+            return up
+    return "HIGH"
