@@ -6,7 +6,7 @@ from .patterns import PATTERN_RULES, SEV_LOW, SEV_MEDIUM, SEV_HIGH
 from .entropy import shannon_entropy
 from .config import should_ignore_file, should_ignore_line, is_allowlisted
 
-SENSITIVE_HINTS = ["key", "secret", "token", "password", "jwt"]
+SENSITIVE_HINTS = ["key", "secret", "token", "password", "jwt"] # safepush: ignore
 
 
 @dataclass
