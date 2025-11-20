@@ -35,14 +35,13 @@ def _classify_entropy_token(token: str, has_sensitive_context: bool) -> Optional
     entropy = shannon_entropy(token)
 
     # HIGH: strong signal that this is a real secret.
-    # - Appears in a sensitive context (e.g. contains "key"/"secret"/"password")
+    # - Appears in a sensitive context
     # - Long and high entropy (very random-looking)
     if has_sensitive_context and length >= 24 and entropy >= 4.0:
         return SEV_HIGH
 
     # MEDIUM: suspicious but less conclusive.
     # (1) Context suggests a secret, but token is shorter / lower entropy,
-    #     e.g., PASSWORD="devpassword"
     if has_sensitive_context and length >= 8:
         return SEV_MEDIUM
 
