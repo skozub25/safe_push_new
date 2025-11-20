@@ -35,13 +35,14 @@ def _classify_entropy_token(token: str, has_sensitive_context: bool) -> Optional
     entropy = shannon_entropy(token)
 
     # HIGH: strong signal that this is a real secret.
-    # - Appears in a sensitive context
+    # - Appears in a sensitive context (e.g. contains "key"/"secret"/"password")
     # - Long and high entropy (very random-looking)
     if has_sensitive_context and length >= 24 and entropy >= 4.0:
         return SEV_HIGH
 
     # MEDIUM: suspicious but less conclusive.
     # (1) Context suggests a secret, but token is shorter / lower entropy,
+    #     e.g., PASSWORD="devpassword"
     if has_sensitive_context and length >= 8:
         return SEV_MEDIUM
 
@@ -69,6 +70,9 @@ def scan_line(file_path: str, line_no: int, line: str) -> List[Finding]:
       - Run provider-specific patterns (PATTERN_RULES) with per-rule severity.
       - Run entropy-based heuristic for quoted tokens, assigning severity
         based on context + entropy + length.
+
+    NEW: If a line has any provider-pattern matches, we do *not* also
+    produce entropy-based findings for that same line. Pattern hits win.
     """
     findings: List[Finding] = []
 
@@ -83,6 +87,7 @@ def scan_line(file_path: str, line_no: int, line: str) -> List[Finding]:
     has_context = _is_sensitive_context(line)
 
     # 1) Known provider patterns
+    provider_hit = False
     for rule in PATTERN_RULES:
         for match in rule.regex.finditer(line):
             token = match.group(0)
@@ -100,6 +105,13 @@ def scan_line(file_path: str, line_no: int, line: str) -> List[Finding]:
                     severity=rule.severity,
                 )
             )
+            provider_hit = True
+
+    # DEDUPE RULE:
+    # If this line had any provider-specific matches, we don't also
+    # attach entropy-based "suspicious" findings for it.
+    if provider_hit:
+        return findings
 
     # 2) Entropy-based candidates inside quotes (unknown secrets)
     for token in re.findall(r'["\']([A-Za-z0-9/+_=.\-]{8,})["\']', line):
