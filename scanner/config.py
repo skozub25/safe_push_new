@@ -29,6 +29,11 @@ except ImportError:
 
 
 _VALID_SEVERITIES = {"LOW", "MEDIUM", "HIGH"}
+_PROFILE_TO_SEVERITY = {
+    "strict": "LOW",
+    "balanced": "MEDIUM",
+    "relaxed": "HIGH",
+}
 
 
 # ======================================================================
@@ -45,7 +50,10 @@ class SafePushConfig:
         ignore_lines_with: list of substrings; if any appear in a line, ignore it
         allowlist_hashes: list of literal tokens or "sha256:<hex>" entries
         block_severity: minimum severity that should BLOCK commits/CI
-                        ("LOW", "MEDIUM", "HIGH"). Defaults to "HIGH".
+                        ("LOW", "MEDIUM", "HIGH").
+                        If not set, defaults via policy_profile or "HIGH".
+        policy_profile: optional high-level profile name:
+                        "strict" | "balanced" | "relaxed"
     """
 
     def __init__(
@@ -55,6 +63,7 @@ class SafePushConfig:
         ignore_lines_with: Optional[List[str]] = None,
         allowlist_hashes: Optional[List[str]] = None,
         block_severity: Optional[str] = None,
+        policy_profile: Optional[str] = None,
     ) -> None:
         self.ignore_paths: List[str] = ignore_paths or []
 
@@ -67,12 +76,19 @@ class SafePushConfig:
         self.ignore_lines_with: List[str] = ignore_lines_with or []
         self.allowlist_hashes: List[str] = allowlist_hashes or []
 
-        # Normalize and validate block_severity; default to "HIGH"
+        # Explicit block severity (wins over profile if set)
         if block_severity:
             bs = str(block_severity).strip().upper()
-            self.block_severity: str = bs if bs in _VALID_SEVERITIES else "HIGH"
+            self.block_severity: Optional[str] = bs if bs in _VALID_SEVERITIES else None
         else:
-            self.block_severity = "HIGH"
+            self.block_severity = None
+
+        # Optional profile, normalized to lowercase
+        if policy_profile:
+            pp = str(policy_profile).strip().lower()
+            self.policy_profile: Optional[str] = pp if pp in _PROFILE_TO_SEVERITY else None
+        else:
+            self.policy_profile = None
 
 
 # ======================================================================
@@ -204,6 +220,7 @@ def _load_config() -> SafePushConfig:
         ignore_lines_with=raw.get("ignore_lines_with", []),
         allowlist_hashes=raw.get("allowlist_hashes", []),
         block_severity=raw.get("block_severity"),
+        policy_profile=raw.get("policy_profile"),
     )
 
 
@@ -218,16 +235,6 @@ _CONFIG: SafePushConfig = _load_config()
 def should_ignore_file(file_path: str) -> bool:
     """
     Return True if this file should be skipped entirely based on ignore_paths.
-
-    Behavior:
-    - Normalize path to forward slashes.
-    - Strip leading "./" so patterns like "tests/**" work reliably.
-    - Support glob patterns, e.g.:
-          "tests/**", "docs/**", "*.md"
-    - Support bare directories, e.g.:
-          "tests" or "tests/"  -> ignore that dir + all children
-    - Support exact file paths:
-          ".safepush.yml"
     """
     patterns = _CONFIG.ignore_paths
     if not patterns:
@@ -278,17 +285,6 @@ def should_ignore_line(line: str) -> bool:
 def is_allowlisted(token: str) -> bool:
     """
     Return True if the given token is explicitly allowlisted.
-
-    Two forms are supported in allowlist_hashes:
-      - Literal value:
-            "MY_NON_SECRET"
-        -> exact string match on token.
-      - Hashed value:
-            "sha256:<hex>"
-        -> we compute sha256(token) and compare.
-
-    This lets you permanently silence known-safe tokens without
-    leaking them in plaintext (when using sha256).
     """
     entries = _CONFIG.allowlist_hashes
     if not entries:
@@ -312,12 +308,22 @@ def get_block_severity() -> str:
     """
     Return the configured minimum severity that should block a commit/CI run.
 
-    Values: "LOW", "MEDIUM", "HIGH".
-    Defaults to "HIGH" if not set or invalid.
+    Precedence:
+      1) block_severity ("LOW"/"MEDIUM"/"HIGH") if explicitly set.
+      2) policy_profile ("strict"/"balanced"/"relaxed") mapped to a severity.
+      3) Default: "HIGH".
     """
-    bs = getattr(_CONFIG, "block_severity", "HIGH")
-    if isinstance(bs, str):
-        up = bs.strip().upper()
-        if up in _VALID_SEVERITIES:
-            return up
+    # 1) Explicit block_severity wins
+    bs = getattr(_CONFIG, "block_severity", None)
+    if isinstance(bs, str) and bs in _VALID_SEVERITIES:
+        return bs
+
+    # 2) Otherwise, use policy_profile if present
+    prof = getattr(_CONFIG, "policy_profile", None)
+    if isinstance(prof, str):
+        sev = _PROFILE_TO_SEVERITY.get(prof)
+        if sev in _VALID_SEVERITIES:
+            return sev
+
+    # 3) Fallback
     return "HIGH"

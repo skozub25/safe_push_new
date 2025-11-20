@@ -19,6 +19,12 @@ allowlist_hashes:
   # Used when you never want a specific value flagged, even if moved.
   # Leave empty or omit if not needed.
 
-# New: configure minimum severity that BLOCKS commits/CI.
-# Options: "LOW", "MEDIUM", "HIGH"
-block_severity: "HIGH"
+# High-level policy profile:
+#   strict   -> block on LOW/MEDIUM/HIGH
+#   balanced -> block on MEDIUM/HIGH
+#   relaxed  -> block on HIGH only
+policy_profile: "balanced"
+
+# Optional explicit override:
+# If you set this, it *overrides* the profile.
+# block_severity: "HIGH"
