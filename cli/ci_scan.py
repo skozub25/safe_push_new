@@ -21,9 +21,17 @@ def _changed_files_in_pr() -> Optional[List[str]]:
     if not base_ref:
         return None  # not running in a PR context
 
-    # Ensure we have full history to diff against base
-    subprocess.run(["git", "fetch", "origin", base_ref, "--depth=1"], check=False)
-    merge_base = _run(["git", "merge-base", f"origin/{base_ref}", "HEAD"])
+    # Try to ensure we have the base branch locally
+    subprocess.run(["git", "fetch", "origin", base_ref, "--depth=50"], check=False)
+
+    try:
+        # Find merge-base between base branch and HEAD
+        merge_base = _run(["git", "merge-base", f"origin/{base_ref}", "HEAD"])
+    except subprocess.CalledProcessError:
+        # In some CI checkouts, origin/<base_ref> may not exist or have no common ancestor.
+        # In that case, fall back to scanning all tracked files instead of crashing.
+        return None
+
     out = _run(["git", "diff", "--name-only", f"{merge_base}..HEAD"])
     return [p for p in out.splitlines() if p]
 
