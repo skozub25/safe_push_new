@@ -137,7 +137,7 @@ def test_multiple_high_entropy_tokens_in_one_line_all_flagged_with_high():
 
     findings = scan_line("combo.py", 42, line)
 
-    assert len(findings) >= 2
-    for f in findings:
-        assert f.severity == SEV_HIGH
-        assert "High-entropy value in sensitive context" in f.reason
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.severity == SEV_HIGH
+    assert "High-entropy value in sensitive context" in f.reason

@@ -72,4 +72,8 @@ PATTERN_RULES: List[PatternRule] = [
             r'aws_secret_access_key[^=\n]*=\s*["\']?[A-Za-z0-9/+=]{40}["\']?'
         ),
     ),
+    PatternRule(
+        name="SafePush Canary Token",
+        regex=re.compile(r"SAFEPUSH_CANARY_[A-Z0-9]{16}"),
+    ),
 ]

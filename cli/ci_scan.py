@@ -7,6 +7,7 @@ from typing import List, Optional
 
 from scanner.core import scan_line, Finding
 from scanner.config import get_block_severity
+from scanner.notifier import send_canary_alert
 
 SEVERITY_RANK = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
 
@@ -62,6 +63,20 @@ def main() -> int:
     changed = _changed_files_in_pr()
     paths = changed if changed else _tracked_files()
     findings = _scan_paths(paths)
+
+    # Canary detection: any finding that matches our SafePush canary pattern.
+    canary_findings = [
+        f for f in findings
+        if "SafePush Canary Token" in f.reason
+    ]
+
+    # Webhook URL is provided via environment (easy to configure in CI).
+    canary_webhook = os.environ.get("SAFEPUSH_CANARY_WEBHOOK")
+
+    if canary_findings and canary_webhook:
+        # Best-effort: send an out-of-band alert.
+        send_canary_alert(canary_webhook, canary_findings)
+
 
     if findings:
         print("Potential secrets detected in CI:\n")
