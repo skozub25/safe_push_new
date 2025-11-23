@@ -1,0 +1,23 @@
+# YAML-style corpus for SafePush (GitHub Actions / config-like)
+
+env:
+  AWS_ACCESS_KEY_ID: AKIA1234567890ABCDE1  # safepush: EXPECT_SECRET pattern
+  AWS_SECRET_ACCESS_KEY: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"  # safepush: EXPECT_SECRET entropy
+  STRIPE_SECRET: "sk_live_1234567890abcdefghijklmn"  # safepush: EXPECT_SECRET pattern
+  SESSION_ID: "abc123def456ghi789"  # safepush: EXPECT_SAFE entropy
+  LOG_LEVEL: "INFO"  # safepush: EXPECT_SAFE entropy
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4  # safepush: EXPECT_SAFE entropy
+
+      - name: Azure connection
+        env:
+          AZURE_SERVICE_BUS: "Endpoint=sb://my-namespace.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=ABCDEF1234567890"  # safepush: EXPECT_SECRET pattern
+
+      - name: Doc example of PAT
+        run: |
+          echo "Example PAT: ghp_xxxxxxxxxxxxxxxxxxxxxxxx (demo only)"  # safepush: EXPECT_SAFE pattern

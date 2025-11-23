@@ -1,0 +1,17 @@
+{
+  "aws_access_key_id": "AKIA1234567890ABCDE1", // safepush: EXPECT_SECRET pattern
+
+  "aws_secret_access_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", // safepush: EXPECT_SECRET entropy
+
+  "stripe_secret": "sk_live_1234567890abcdefghijklmn", // safepush: EXPECT_SECRET pattern
+
+  "session_id": "abc123def456ghi789", // safepush: EXPECT_SAFE entropy
+
+  "logging_level": "DEBUG", // safepush: EXPECT_SAFE entropy
+
+  "callback_url": "https://example.com/callback?state=abc123", // safepush: EXPECT_SAFE entropy
+
+  "example_github_pat": "ghp_xxxxxxxxxx", // safepush: EXPECT_SAFE pattern
+
+  "opaque_token": "Z7xY6wV5uT4sR3qP2oN1mL0kJ9" // safepush: EXPECT_SECRET entropy
+}
