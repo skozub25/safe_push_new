@@ -7,7 +7,7 @@ from .entropy import shannon_entropy
 from .config import should_ignore_file, should_ignore_line, is_allowlisted
 
 SENSITIVE_HINTS = ["key", "secret", "token", "password", "jwt"] # safepush: ignore
-
+SEVERITY_RANK = {SEV_LOW: 1, SEV_MEDIUM: 2, SEV_HIGH: 3}
 
 @dataclass
 class Finding:
@@ -55,6 +55,24 @@ def _classify_entropy_token(token: str, has_sensitive_context: bool) -> Optional
 
     return None
 
+def _dedupe_by_line(findings: List[Finding]) -> List[Finding]:
+    """
+    For each (file, line_no, snippet), keep only the Finding
+    with the highest severity. If severities tie, keep the first one seen.
+    """
+    best: dict[tuple[str, int, str], Finding] = {}
+
+    for f in findings:
+        key = (f.file, f.line_no, f.snippet)
+        existing = best.get(key)
+        if existing is None:
+            best[key] = f
+            continue
+
+        if SEVERITY_RANK.get(f.severity, 0) > SEVERITY_RANK.get(existing.severity, 0):
+            best[key] = f
+
+    return list(best.values())
 
 def scan_line(file_path: str, line_no: int, line: str) -> List[Finding]:
     """
@@ -139,4 +157,4 @@ def scan_line(file_path: str, line_no: int, line: str) -> List[Finding]:
             )
         )
 
-    return findings
+    return _dedupe_by_line(findings)

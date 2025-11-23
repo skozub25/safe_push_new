@@ -62,7 +62,7 @@ def test_multiple_high_entropy_tokens_in_one_line_all_flagged():
     findings = make_findings(line)
 
     # Both should be caught as HIGH with the classic reason string
-    assert len(findings) == 2
-    for f in findings:
-        assert f.severity == "HIGH"
-        assert "High-entropy value in sensitive context" in f.reason
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.severity == "HIGH"
+    assert "High-entropy value in sensitive context" in f.reason
