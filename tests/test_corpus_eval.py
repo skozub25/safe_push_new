@@ -40,13 +40,17 @@ def _parse_label_from_comment(line: str) -> Tuple[Label | None, Source | None]:
     """
     Parse labels from trailing comment of the form:
 
-        # safepush: EXPECT_SECRET entropy HIGH
-        # safepush: EXPECT_SAFE pattern
+        # safepush: EXPECT_SECRET entropy
+        // safepush: EXPECT_SAFE pattern
 
     Returns (label, source) or (None, None) if the line is unlabeled.
     """
-    marker = "# safepush:"
-    if marker not in line:
+    marker: str | None = None
+    if "# safepush:" in line:
+        marker = "# safepush:"
+    elif "// safepush:" in line:
+        marker = "// safepush:"
+    else:
         return None, None
 
     comment = line.split(marker, 1)[1].strip()
@@ -65,33 +69,43 @@ def _parse_label_from_comment(line: str) -> Tuple[Label | None, Source | None]:
         return None, None
 
     src: Source | None = None
-    if len(parts) >= 2:
-        if parts[1] in ("entropy", "pattern"):
-            src = parts[1]  # type: ignore[assignment]
+    if len(parts) >= 2 and parts[1] in ("entropy", "pattern"):
+        src = parts[1]  # type: ignore[assignment]
 
     return label, src
 
 
 def _load_corpus() -> List[LabeledLine]:
+    """
+    Load all labeled lines from our corpus files.
+
+    We treat corpus files as plain text and look for lines
+    containing a safepush label comment.
+    """
     root = pathlib.Path(__file__).parent / "corpus"
     labeled: List[LabeledLine] = []
 
-    for path in sorted(root.glob("*.py")):
-        with path.open("r", encoding="utf-8") as f:
-            for i, raw_line in enumerate(f, start=1):
-                label, source = _parse_label_from_comment(raw_line)
-                if not label or not source:
-                    continue
+    # Support multiple realistic file types.
+    patterns = ("*.py", "*.jsonc", "*.env", "*.yml", "*.yaml")
 
-                labeled.append(
-                    LabeledLine(
-                        file=str(path),
-                        line_no=i,
-                        text=raw_line.rstrip("\n"),
-                        label=label,
-                        source=source,
+    for glob_pattern in patterns:
+        for path in sorted(root.glob(glob_pattern)):
+            with path.open("r", encoding="utf-8") as f:
+                for i, raw_line in enumerate(f, start=1):
+                    label, source = _parse_label_from_comment(raw_line)
+                    if not label or not source:
+                        continue
+
+                    labeled.append(
+                        LabeledLine(
+                            file=str(path),
+                            line_no=i,
+                            text=raw_line.rstrip("\n"),
+                            label=label,
+                            source=source,
+                        )
                     )
-                )
+
     return labeled
 
 
@@ -102,7 +116,6 @@ def _predict_has_finding(sample: LabeledLine) -> bool:
     """
     findings = core.scan_line(sample.file, sample.line_no, sample.text)
     return any(f.severity in ("MEDIUM", "HIGH") for f in findings)
-
 
 
 def _predict_source(sample: LabeledLine) -> str | None:
@@ -137,8 +150,8 @@ def test_labeled_corpus_precision_recall():
         "pattern": {"tp": 0, "fp": 0, "fn": 0, "tn": 0},
     }
 
-    false_positives: list[LabeledLine] = []
-    false_negatives: list[LabeledLine] = []
+    false_positives: List[LabeledLine] = []
+    false_negatives: List[LabeledLine] = []
 
     for s in samples:
         y_true = 1 if s.label == "SECRET" else 0
@@ -155,7 +168,6 @@ def test_labeled_corpus_precision_recall():
         else:
             tn += 1
 
-        # per source (based on EXPECT_* source label)
         bucket = per_source[s.source]
         if y_true == 1 and y_pred == 1:
             bucket["tp"] += 1
